@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="MathFont_RibbonOnLoad">
+  <ribbon>
+    <tabs>
+      <tab id="tabMathFont" label="Math Font">
+        <group id="grpMathFontApply" label="Equation font">
+          <button id="btnMathFontSelection" label="Selection" size="large" screentip="Apply the target font to math zones in the current selection." onAction="MathFont_RibbonSelection"/>
+          <button id="btnMathFontSlide" label="Current slide" size="large" screentip="Apply the target font to every math zone on the current slide." onAction="MathFont_RibbonSlide"/>
+          <button id="btnMathFontPresentation" label="All slides" size="large" screentip="Apply the target font to every math zone in the active presentation." onAction="MathFont_RibbonPresentation"/>
+        </group>
+        <group id="grpMathFontSettings" label="Settings">
+          <toggleButton id="tglMathFontAuto" label="Auto format" screentip="When selection changes, reformat math zones on the current slide." onAction="MathFont_RibbonToggleAuto" getPressed="MathFont_RibbonGetAuto"/>
+          <button id="btnMathFontSetFont" label="Set font..." screentip="Change the target math font. Default: Latin Modern Math." onAction="MathFont_RibbonSetFont"/>
+          <button id="btnMathFontCambria" label="Restore Cambria" screentip="Restore every math zone in the active presentation to Cambria Math." onAction="MathFont_RibbonRestoreCambria"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
