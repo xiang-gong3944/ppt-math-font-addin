@@ -4,14 +4,21 @@
     <tabs>
       <tab id="tabMathFont" label="Math Font">
         <group id="grpMathFontApply" label="Equation font">
-          <button id="btnMathFontSelection" label="Selection" size="large" screentip="Apply the target font to math zones in the current selection." onAction="MathFont_RibbonSelection"/>
-          <button id="btnMathFontSlide" label="Current slide" size="large" screentip="Apply the target font to every math zone on the current slide." onAction="MathFont_RibbonSlide"/>
-          <button id="btnMathFontPresentation" label="All slides" size="large" screentip="Apply the target font to every math zone in the active presentation." onAction="MathFont_RibbonPresentation"/>
+          <button id="btnMathFontSelection" label="Selection" imageMso="SelectAll" size="large" screentip="Apply the target font to math zones in the selected text or equation blocks." onAction="MathFont_RibbonSelection"/>
+          <button id="btnMathFontSlide" label="Current slide" imageMso="SlideShowFromCurrent" size="large" screentip="Apply the target font to every math zone on the current slide." onAction="MathFont_RibbonSlide"/>
+          <button id="btnMathFontPresentation" label="All slides" imageMso="ViewSlideSorterView" size="large" screentip="Apply the target font to every math zone in the active presentation." onAction="MathFont_RibbonPresentation"/>
         </group>
         <group id="grpMathFontSettings" label="Settings">
-          <toggleButton id="tglMathFontAuto" label="Auto format" screentip="When selection changes, reformat math zones on the current slide." onAction="MathFont_RibbonToggleAuto" getPressed="MathFont_RibbonGetAuto"/>
-          <button id="btnMathFontSetFont" label="Set font..." screentip="Change the target math font. Default: Latin Modern Math." onAction="MathFont_RibbonSetFont"/>
-          <button id="btnMathFontCambria" label="Restore Cambria" screentip="Restore every math zone in the active presentation to Cambria Math." onAction="MathFont_RibbonRestoreCambria"/>
+          <comboBox id="cmbMathFont" label="Font" sizeString="NewComputerModernMath   " getText="MathFont_RibbonGetFont" onChange="MathFont_RibbonFontChanged" screentip="Select or type an installed OpenType Math font. Install optional fonts separately.">
+            <item id="fontLatinModern" label="Latin Modern Math"/>
+            <item id="fontNewComputerModern" label="NewComputerModernMath"/>
+            <item id="fontCambria" label="Cambria Math"/>
+            <item id="fontStixTwo" label="STIX Two Math"/>
+            <item id="fontTeXGyreTermes" label="TeX Gyre Termes Math"/>
+            <item id="fontTeXGyrePagella" label="TeX Gyre Pagella Math"/>
+          </comboBox>
+          <toggleButton id="tglMathFontAuto" label="Auto format" imageMso="FormatPainter" screentip="When selection changes, reformat math zones on the current slide." onAction="MathFont_RibbonToggleAuto" getPressed="MathFont_RibbonGetAuto"/>
+          <button id="btnMathFontCambria" label="Restore Cambria" imageMso="Undo" screentip="Restore all equation fonts to Cambria Math and turn Auto format off." onAction="MathFont_RibbonRestoreCambria"/>
         </group>
       </tab>
     </tabs>

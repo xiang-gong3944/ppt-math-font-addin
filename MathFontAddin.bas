@@ -43,16 +43,24 @@ Public Sub MathFont_RibbonPresentation(ByVal control As Office.IRibbonControl)
 End Sub
 
 Public Sub MathFont_RibbonRestoreCambria(ByVal control As Office.IRibbonControl)
-    MathFont_ApplyPresentationWithFont "Cambria Math", True
+    MathFont_RestoreCambria
 End Sub
 
-Public Sub MathFont_RibbonSetFont(ByVal control As Office.IRibbonControl)
-    MathFont_SetTargetFont
+Public Sub MathFont_RibbonGetFont(ByVal control As Office.IRibbonControl, ByRef returnedVal)
+    EnsureSettingsLoaded
+    returnedVal = gTargetFont
+End Sub
+
+Public Sub MathFont_RibbonFontChanged(ByVal control As Office.IRibbonControl, ByVal text As String)
+    On Error GoTo Failed
+    MathFont_SetTargetFont text
+    Exit Sub
+Failed:
+    MsgBox "Could not save the target font." & vbCrLf & "PowerPoint returned: " & Err.Description, vbExclamation, "Math Font"
 End Sub
 
 Public Sub MathFont_RibbonToggleAuto(ByVal control As Office.IRibbonControl, ByVal pressed As Boolean)
-    gAutoEnabled = pressed
-    SaveSetting APP_NAME, SETTINGS_SECTION, "AutoEnabled", IIf(gAutoEnabled, "1", "0")
+    SetAutoEnabled pressed
 End Sub
 
 Public Sub MathFont_RibbonGetAuto(ByVal control As Office.IRibbonControl, ByRef returnedVal)
@@ -60,24 +68,21 @@ Public Sub MathFont_RibbonGetAuto(ByVal control As Office.IRibbonControl, ByRef 
 End Sub
 
 Public Sub MathFont_ApplySelection()
-    Dim n As Long
     EnsureSettingsLoaded
     On Error GoTo Failed
     If ActiveWindow Is Nothing Then Exit Sub
 
     Select Case ActiveWindow.Selection.Type
         Case ppSelectionText
-            n = ApplyFontToTextRangeMathZones(ActiveWindow.Selection.TextRange2, gTargetFont)
+            Call FormatTextRangeMathZones(ActiveWindow.Selection.TextRange2, gTargetFont)
         Case ppSelectionShapes
-            n = ApplyFontToShapeRange(ActiveWindow.Selection.ShapeRange, gTargetFont)
+            Call ApplyFontToShapeRange(ActiveWindow.Selection.ShapeRange, gTargetFont)
         Case ppSelectionSlides
-            n = ApplyFontToSlideRange(ActiveWindow.Selection.SlideRange, gTargetFont)
+            Call ApplyFontToSlideRange(ActiveWindow.Selection.SlideRange, gTargetFont)
         Case Else
-            MsgBox "Select text, one or more shapes, or one or more slides first.", vbInformation, "Math Font"
             Exit Sub
     End Select
 
-    ShowResult n, gTargetFont, "selection"
     Exit Sub
 Failed:
     MsgBox "Could not format the current selection." & vbCrLf & "PowerPoint returned: " & Err.Description, vbExclamation, "Math Font"
@@ -85,15 +90,10 @@ End Sub
 
 Public Sub MathFont_ApplySlide()
     Dim sld As PowerPoint.Slide
-    Dim n As Long
     EnsureSettingsLoaded
     Set sld = CurrentSlide()
-    If sld Is Nothing Then
-        MsgBox "No editable slide is active.", vbInformation, "Math Font"
-        Exit Sub
-    End If
-    n = ApplyFontToSlide(sld, gTargetFont)
-    ShowResult n, gTargetFont, "current slide"
+    If sld Is Nothing Then Exit Sub
+    Call ApplyFontToSlide(sld, gTargetFont)
 End Sub
 
 Public Sub MathFont_ApplyPresentation()
@@ -101,15 +101,34 @@ Public Sub MathFont_ApplyPresentation()
     MathFont_ApplyPresentationWithFont gTargetFont, True
 End Sub
 
-Public Sub MathFont_SetTargetFont()
-    Dim s As String
-    EnsureSettingsLoaded
-    s = InputBox("Enter the exact installed math-font name." & vbCrLf & "Recommended: Latin Modern Math", "Math Font", gTargetFont)
-    s = Trim$(s)
-    If Len(s) = 0 Then Exit Sub
-    gTargetFont = s
-    SaveSetting APP_NAME, SETTINGS_SECTION, "TargetFont", gTargetFont
-    MsgBox "Target math font is now:" & vbCrLf & gTargetFont, vbInformation, "Math Font"
+Public Sub MathFont_RestoreCambria()
+    If Application.Presentations.Count = 0 Then Exit Sub
+    RestoreCambriaInPresentation ActivePresentation, True
+End Sub
+
+Private Sub RestoreCambriaInPresentation(ByVal pres As PowerPoint.Presentation, ByVal showErrors As Boolean)
+    Dim sld As PowerPoint.Slide
+    On Error GoTo Failed
+    gBusy = True
+    SetAutoEnabled False
+    For Each sld In pres.Slides
+        Call ApplyFontToSlide(sld, "Cambria Math")
+    Next sld
+    gBusy = False
+    Exit Sub
+Failed:
+    gBusy = False
+    If showErrors Then MsgBox "Could not restore Cambria Math." & vbCrLf & "PowerPoint returned: " & Err.Description, vbExclamation, "Math Font"
+End Sub
+
+Public Sub MathFont_SetTargetFont(ByVal fontName As String)
+    fontName = Trim$(fontName)
+    If Len(fontName) > 0 Then
+        SaveSetting APP_NAME, SETTINGS_SECTION, "TargetFont", fontName
+        gTargetFont = fontName
+    End If
+    ' Blank input restores the displayed value without clearing the setting.
+    If Not gRibbon Is Nothing Then gRibbon.InvalidateControl "cmbMathFont"
 End Sub
 
 Public Sub MathFont_HandleSelectionChange(ByVal Sel As PowerPoint.Selection)
@@ -131,32 +150,33 @@ Private Sub EnsureSettingsLoaded()
     End If
 End Sub
 
+Private Sub SetAutoEnabled(ByVal enabled As Boolean)
+    gAutoEnabled = enabled
+    SaveSetting APP_NAME, SETTINGS_SECTION, "AutoEnabled", IIf(gAutoEnabled, "1", "0")
+    If Not gRibbon Is Nothing Then gRibbon.InvalidateControl "tglMathFontAuto"
+End Sub
+
 Private Function CurrentSlide() As PowerPoint.Slide
     On Error Resume Next
     Set CurrentSlide = ActiveWindow.View.Slide
     On Error GoTo 0
 End Function
 
-Private Sub MathFont_ApplyPresentationWithFont(ByVal fontName As String, ByVal showMessage As Boolean)
+Private Sub MathFont_ApplyPresentationWithFont(ByVal fontName As String, ByVal showErrors As Boolean)
     Dim pres As PowerPoint.Presentation
     Dim sld As PowerPoint.Slide
-    Dim n As Long
     On Error GoTo Failed
-    If Application.Presentations.Count = 0 Then
-        If showMessage Then MsgBox "No presentation is open.", vbInformation, "Math Font"
-        Exit Sub
-    End If
+    If Application.Presentations.Count = 0 Then Exit Sub
     Set pres = ActivePresentation
     gBusy = True
     For Each sld In pres.Slides
-        n = n + ApplyFontToSlide(sld, fontName)
+        Call ApplyFontToSlide(sld, fontName)
     Next sld
     gBusy = False
-    If showMessage Then ShowResult n, fontName, "presentation"
     Exit Sub
 Failed:
     gBusy = False
-    If showMessage Then MsgBox "Could not format the presentation." & vbCrLf & "PowerPoint returned: " & Err.Description, vbExclamation, "Math Font"
+    If showErrors Then MsgBox "Could not format the presentation." & vbCrLf & "PowerPoint returned: " & Err.Description, vbExclamation, "Math Font"
 End Sub
 
 Private Function ApplyFontToSlideRange(ByVal sr As PowerPoint.SlideRange, ByVal fontName As String) As Long
@@ -199,13 +219,13 @@ Private Function ApplyFontToShape(ByVal shp As PowerPoint.Shape, ByVal fontName 
     End If
     If shp.HasTextFrame = msoTrue Then
         If shp.TextFrame2.HasText = msoTrue Then
-            ApplyFontToShape = ApplyFontToShape + ApplyFontToTextRangeMathZones(shp.TextFrame2.TextRange, fontName)
+            ApplyFontToShape = ApplyFontToShape + FormatTextRangeMathZones(shp.TextFrame2.TextRange, fontName)
         End If
     End If
 Done:
 End Function
 
-Private Function ApplyFontToTextRangeMathZones(ByVal tr As Office.TextRange2, ByVal fontName As String) As Long
+Private Function FormatTextRangeMathZones(ByVal tr As Office.TextRange2, ByVal fontName As String) As Long
     Dim zoneIndex As Long
     Dim zone As Office.TextRange2
     Dim prevStart As Long, prevLength As Long
@@ -243,19 +263,12 @@ Private Function ApplyFontToTextRangeMathZones(ByVal tr As Office.TextRange2, By
         havePrev = True
 
         On Error Resume Next
+        ' Keep the upright/italic style set by PowerPoint's normal font controls.
         zone.Font.Name = fontName
-        If Err.Number = 0 Then ApplyFontToTextRangeMathZones = ApplyFontToTextRangeMathZones + 1
+        If Err.Number = 0 Then FormatTextRangeMathZones = FormatTextRangeMathZones + 1
         Err.Clear
         On Error GoTo 0
 
         zoneIndex = zoneIndex + 1
     Loop
 End Function
-
-Private Sub ShowResult(ByVal count As Long, ByVal fontName As String, ByVal scopeName As String)
-    If count = 0 Then
-        MsgBox "No math zones were found in the " & scopeName & ".", vbInformation, "Math Font"
-    Else
-        MsgBox CStr(count) & " math zone(s) formatted with:" & vbCrLf & fontName, vbInformation, "Math Font"
-    End If
-End Sub

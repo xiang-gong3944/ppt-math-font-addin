@@ -1,14 +1,15 @@
+param([switch]$BuildOnly)
+
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = $PSScriptRoot
 $BasPath = Join-Path $ScriptDir "MathFontAddin.bas"
 $ClsPath = Join-Path $ScriptDir "CAppEvents.cls"
 $RibbonPath = Join-Path $ScriptDir "customUI.xml"
-
-$TargetDir = Join-Path $env:APPDATA "Microsoft\AddIns\PptMathFontAddin"
-$PpamPath = Join-Path $TargetDir "PptMathFontAddin.ppam"
+$PpamName = "PptMathFontAddin.ppam"
 
 function Stop-WithMessage([string]$Message) {
+    if ($BuildOnly) { throw $Message }
     Write-Host ""
     Write-Host $Message
     Write-Host ""
@@ -17,7 +18,19 @@ function Stop-WithMessage([string]$Message) {
     exit 1
 }
 
-if (-not (Test-Path $BasPath) -or -not (Test-Path $ClsPath) -or -not (Test-Path $RibbonPath)) {
+if ($env:OS -ne "Windows_NT") {
+    throw "This script requires desktop PowerPoint on Windows. On Mac, add PptMathFontAddin.ppam from Tools > PowerPoint Add-ins."
+}
+
+if ($BuildOnly) {
+    $TargetDir = $ScriptDir
+}
+else {
+    $TargetDir = Join-Path $env:APPDATA "Microsoft\AddIns\PptMathFontAddin"
+}
+$PpamPath = Join-Path $TargetDir $PpamName
+
+if (-not (Test-Path -LiteralPath $BasPath) -or -not (Test-Path -LiteralPath $ClsPath) -or -not (Test-Path -LiteralPath $RibbonPath)) {
     Stop-WithMessage "Required source files are missing. Extract the whole ZIP before running install.ps1."
 }
 
@@ -26,23 +39,22 @@ if ($running) {
     Stop-WithMessage "PowerPoint is running. Close every PowerPoint window, then run install.ps1 again."
 }
 
-New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
-if (Test-Path $PpamPath) { Remove-Item $PpamPath -Force }
-
-$ppt = $null
-$pres = $null
-
-try {
-    Write-Host "Building PowerPoint add-in..."
-    $ppt = New-Object -ComObject PowerPoint.Application
-    $pres = $ppt.Presentations.Add()
-
+function New-PpamPackage([string]$BuildPath) {
+    $buildApp = $null
+    $pres = $null
     try {
-        [void]$pres.VBProject.VBComponents.Import($BasPath)
-        [void]$pres.VBProject.VBComponents.Import($ClsPath)
-    }
-    catch {
-        throw @"
+        Write-Host "Building PowerPoint add-in..."
+        $buildApp = New-Object -ComObject PowerPoint.Application
+        $buildApp.Visible = -1
+        $pres = $buildApp.Presentations.Add()
+        [void]$pres.Slides.Add(1, 12)
+
+        try {
+            [void]$pres.VBProject.VBComponents.Import($BasPath)
+            [void]$pres.VBProject.VBComponents.Import($ClsPath)
+        }
+        catch {
+            throw @"
 PowerPoint blocked programmatic access to the VBA project.
 
 Temporarily enable:
@@ -52,19 +64,24 @@ PowerPoint > File > Options > Trust Center > Trust Center Settings
 Then close PowerPoint and run install.ps1 again.
 You can turn that checkbox off again after installation.
 "@
+        }
+
+        # ppSaveAsOpenXMLAddin = 30
+        $pres.SaveAs($BuildPath, 30)
+    }
+    finally {
+        if ($null -ne $pres) {
+            try { $pres.Saved = -1; $pres.Close() } catch {}
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($pres)
+        }
+        if ($null -ne $buildApp) {
+            try { $buildApp.Quit() } catch {}
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($buildApp)
+        }
     }
 
-    # ppSaveAsOpenXMLAddin = 30
-    $pres.SaveAs($PpamPath, 30)
-    $pres.Close()
-    $pres = $null
-    $ppt.Quit()
-    $ppt = $null
-}
-catch {
-    if ($pres -ne $null) { try { $pres.Close() } catch {} }
-    if ($ppt -ne $null) { try { $ppt.Quit() } catch {} }
-    Stop-WithMessage $_.Exception.Message
+    Write-Host "Adding the Ribbon UI..."
+    Add-RibbonToPpam $BuildPath $RibbonPath
 }
 
 Add-Type -AssemblyName System.IO.Compression
@@ -87,6 +104,15 @@ function Save-XmlToZipEntry($Entry, [xml]$XmlDoc) {
 function Add-RibbonToPpam([string]$PackagePath, [string]$UiPath) {
     $zip = [System.IO.Compression.ZipFile]::Open($PackagePath,[System.IO.Compression.ZipArchiveMode]::Update)
     try {
+        # .NET Framework's ZIP update can retain deflate bytes in an empty part
+        # while marking it as uncompressed. Recreate empty parts to keep PPAM valid.
+        $emptyEntries = @($zip.Entries | Where-Object { $_.Length -eq 0 })
+        foreach ($emptyEntry in $emptyEntries) {
+            $emptyName = $emptyEntry.FullName
+            $emptyEntry.Delete()
+            [void]$zip.CreateEntry($emptyName)
+        }
+
         $old = $zip.GetEntry("customUI/customUI.xml")
         if ($old -ne $null) { $old.Delete() }
 
@@ -143,6 +169,7 @@ function Add-RibbonToPpam([string]$PackagePath, [string]$UiPath) {
         $hasOverride = $false
         foreach ($node in $ctDoc.DocumentElement.ChildNodes) {
             if ($node.LocalName -eq "Override" -and $node.GetAttribute("PartName") -eq "/customUI/customUI.xml") {
+                $node.SetAttribute("ContentType", "application/xml")
                 $hasOverride = $true
                 break
             }
@@ -151,7 +178,7 @@ function Add-RibbonToPpam([string]$PackagePath, [string]$UiPath) {
         if (-not $hasOverride) {
             $ov = $ctDoc.CreateElement("Override", $ctNs)
             $ov.SetAttribute("PartName", "/customUI/customUI.xml")
-            $ov.SetAttribute("ContentType", "application/vnd.ms-office.customUI+xml")
+            $ov.SetAttribute("ContentType", "application/xml")
             [void]$ctDoc.DocumentElement.AppendChild($ov)
         }
 
@@ -160,8 +187,39 @@ function Add-RibbonToPpam([string]$PackagePath, [string]$UiPath) {
     finally { $zip.Dispose() }
 }
 
-Write-Host "Adding the Ribbon UI..."
-Add-RibbonToPpam $PpamPath $RibbonPath
+$buildDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ppt-math-build-" + [guid]::NewGuid().ToString("N"))
+# PowerPoint can reject SaveAs if an add-in with that name is already loaded.
+$buildPath = Join-Path $buildDir "PptMathFontBuild.ppam"
+$buildError = $null
+try {
+    [void](New-Item -ItemType Directory -Path $buildDir)
+    New-PpamPackage $buildPath
+    if (-not $BuildOnly) {
+        # The previous add-in can remain locked until the build's PowerPoint process exits.
+        $shutdownDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (Get-Process POWERPNT -ErrorAction SilentlyContinue) {
+            if ([DateTime]::UtcNow -ge $shutdownDeadline) {
+                throw "PowerPoint is still running. Close it before replacing the installed add-in."
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    [void](New-Item -ItemType Directory -Force -Path $TargetDir)
+    Copy-Item -LiteralPath $buildPath -Destination $PpamPath -Force
+}
+catch {
+    $buildError = $_.Exception.Message
+}
+finally {
+    Remove-Item -LiteralPath $buildPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $buildDir -ErrorAction SilentlyContinue
+}
+if ($buildError) { Stop-WithMessage $buildError }
+
+if ($BuildOnly) {
+    Write-Host "Built add-in: $PpamPath"
+    return
+}
 
 Write-Host "Registering the add-in..."
 $ppt = $null
@@ -169,6 +227,9 @@ try {
     $ppt = New-Object -ComObject PowerPoint.Application
     $addin = $ppt.AddIns.Add($PpamPath)
     $addin.Loaded = -1
+    if ($addin.Loaded -ne -1) {
+        throw "PowerPoint did not load the add-in. Open PowerPoint > File > Options > Add-ins > Manage: PowerPoint Add-ins > Go, then load the generated PPAM and check the message shown there."
+    }
     $addin.AutoLoad = -1
     $ppt.Quit()
     $ppt = $null
