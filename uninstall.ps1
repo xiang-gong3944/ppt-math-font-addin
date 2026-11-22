@@ -1,7 +1,29 @@
+param([switch]$PurgeSettings)
+
 $ErrorActionPreference = "Stop"
 
-$TargetDir = Join-Path $env:APPDATA "Microsoft\AddIns\PptMathFontAddin"
+$TargetDir = [System.IO.Path]::GetFullPath($env:APPDATA)
+foreach ($directoryName in @("Microsoft", "AddIns", "PptMathFontAddin")) {
+    $TargetDir = Join-Path $TargetDir $directoryName
+    if (Test-Path -LiteralPath $TargetDir -PathType Container) {
+        $directory = Get-Item -LiteralPath $TargetDir -Force
+        if ($directory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "The uninstall path contains a directory link: $TargetDir"
+        }
+    }
+}
 $PpamPath = Join-Path $TargetDir "PptMathFontAddin.ppam"
+
+function Find-InstalledAddInIndex($AddIns) {
+    for ($i = 1; $i -le $AddIns.Count; $i++) {
+        $addin = $AddIns.Item($i)
+        $fullName = [System.IO.Path]::GetFullPath($addin.FullName)
+        if ([string]::Equals($fullName, $PpamPath, [StringComparison]::OrdinalIgnoreCase)) {
+            return $i
+        }
+    }
+    return 0
+}
 
 $running = Get-Process POWERPNT -ErrorAction SilentlyContinue
 if ($running) {
@@ -14,33 +36,52 @@ if ($running) {
 $ppt = $null
 try {
     $ppt = New-Object -ComObject PowerPoint.Application
+    $addIns = $ppt.AddIns
+    $index = Find-InstalledAddInIndex $addIns
 
-    for ($i = $ppt.AddIns.Count; $i -ge 1; $i--) {
-        $addin = $ppt.AddIns.Item($i)
-        $full = ""
-        try { $full = $addin.FullName } catch {}
-
-        if ($full -eq $PpamPath -or $addin.Name -eq "PptMathFontAddin.ppam") {
-            try { $addin.AutoLoad = 0 } catch {}
-            try { $addin.Loaded = 0 } catch {}
-            try { $ppt.AddIns.Remove($i) } catch {}
-        }
+    if ($index -gt 0) {
+        $addin = $addIns.Item($index)
+        $addin.AutoLoad = 0
+        $addin.Loaded = 0
+        $addIns.Remove($index)
     }
 
-    $ppt.Quit()
-    $ppt = $null
+    if ((Find-InstalledAddInIndex $addIns) -gt 0) {
+        throw "PowerPoint still lists the add-in at $PpamPath."
+    }
 }
 catch {
-    if ($ppt -ne $null) { try { $ppt.Quit() } catch {} }
-    Write-Host "PowerPoint add-in registration cleanup returned:"
-    Write-Host $_.Exception.Message
+    throw "Could not unregister the add-in. No files or settings were deleted. $($_.Exception.Message)"
+}
+finally {
+    if ($null -ne $ppt) {
+        $ppt.Quit()
+    }
 }
 
-if (Test-Path $TargetDir) {
-    Remove-Item $TargetDir -Recurse -Force
+foreach ($fileName in @("PptMathFontAddin.ppam", "MathFontAddin.bas", "CAppEvents.cls", "customUI.xml")) {
+    $filePath = Join-Path $TargetDir $fileName
+    if (Test-Path -LiteralPath $filePath -PathType Leaf) {
+        Remove-Item -LiteralPath $filePath -Force
+    }
 }
 
-Remove-Item "HKCU:\Software\VB and VBA Program Settings\PptMathFontAddin" -Recurse -Force -ErrorAction SilentlyContinue
+if ((Test-Path -LiteralPath $TargetDir -PathType Container) -and
+    -not (Get-ChildItem -LiteralPath $TargetDir -Force | Select-Object -First 1)) {
+    [System.IO.Directory]::Delete($TargetDir)
+}
+
+if ($PurgeSettings) {
+    $settingsPath = "HKCU:\Software\VB and VBA Program Settings\PptMathFontAddin\Settings"
+    if (Test-Path -LiteralPath $settingsPath) {
+        $valueNames = (Get-Item -LiteralPath $settingsPath).GetValueNames()
+        foreach ($valueName in @("TargetFont", "AutoEnabled")) {
+            if ($valueNames -contains $valueName) {
+                Remove-ItemProperty -LiteralPath $settingsPath -Name $valueName
+            }
+        }
+    }
+}
 
 Write-Host ""
 Write-Host "Uninstalled."

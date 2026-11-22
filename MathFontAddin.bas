@@ -52,15 +52,24 @@ Public Sub MathFont_RibbonGetFont(ByVal control As Office.IRibbonControl, ByRef 
 End Sub
 
 Public Sub MathFont_RibbonFontChanged(ByVal control As Office.IRibbonControl, ByVal text As String)
+    Dim previousFont As String
     On Error GoTo Failed
+    EnsureSettingsLoaded
+    previousFont = gTargetFont
     MathFont_SetTargetFont text
+    If gAutoEnabled And StrComp(previousFont, gTargetFont, vbTextCompare) <> 0 Then
+        ShowAutoFormatNotice
+    End If
     Exit Sub
 Failed:
     MsgBox "Could not save the target font." & vbCrLf & "PowerPoint returned: " & Err.Description, vbExclamation, "Math Font"
 End Sub
 
 Public Sub MathFont_RibbonToggleAuto(ByVal control As Office.IRibbonControl, ByVal pressed As Boolean)
+    Dim wasEnabled As Boolean
+    wasEnabled = gAutoEnabled
     SetAutoEnabled pressed
+    If pressed And Not wasEnabled Then ShowAutoFormatNotice
 End Sub
 
 Public Sub MathFont_RibbonGetAuto(ByVal control As Office.IRibbonControl, ByRef returnedVal)
@@ -154,6 +163,13 @@ Private Sub SetAutoEnabled(ByVal enabled As Boolean)
     gAutoEnabled = enabled
     SaveSetting APP_NAME, SETTINGS_SECTION, "AutoEnabled", IIf(gAutoEnabled, "1", "0")
     If Not gRibbon Is Nothing Then gRibbon.InvalidateControl "tglMathFontAuto"
+End Sub
+
+Private Sub ShowAutoFormatNotice()
+    MsgBox "Auto format and the target font are saved across PowerPoint sessions." & vbCrLf & vbCrLf & _
+        "While Auto format is on, changing the selection in any open presentation can reformat the equations on its current slide. " & _
+        "Turn Auto format off before working on a presentation whose equation fonts you want to keep.", _
+        vbExclamation, "Math Font - Auto format"
 End Sub
 
 Private Function CurrentSlide() As PowerPoint.Slide
