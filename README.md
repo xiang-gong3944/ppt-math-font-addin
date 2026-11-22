@@ -1,6 +1,6 @@
 # PowerPoint Math Font Add-in
 
-デスクトップ版 PowerPoint の数式（Math Zone）のフォントをまとめて変更する VBA アドインです。Windows で動作確認済みです。Mac で試す場合は [Mac の手動インストール手順](#mac-手動インストール実機未検証)を参照してください。
+デスクトップ版 PowerPoint の数式（Math Zone）のフォントをまとめて変更する VBA アドインです。Windows と Mac で動作確認済みです。Mac で使う場合は [Mac の手動インストール](#mac-の手動インストール)を参照してください。
 
 既定のフォントは **Latin Modern Math** です。Computer Modern 系の見た目を PowerPoint 数式で使いたい用途を想定しています。
 
@@ -76,13 +76,15 @@ PowerPoint のリボンに **Math Font** タブを追加します。
 
 ダウンロードしたファイルが Windows でブロックされた場合は、配布元を確認し、信頼できる場合に限って、その `.ppam` のプロパティからブロックを解除して再度登録します。[Microsoft の手順](https://learn.microsoft.com/en-us/microsoft-365-apps/security/internet-macros-blocked#macro-enabled-add-in-files-for-powerpoint-and-excel)
 
-### Mac — 手動インストール（実機未検証）
+### Mac の手動インストール
 
-Mac 版 PowerPoint は VBA アドインとリボンのカスタマイズを利用できます。同じ `.ppam` で試せます。このアドインの数式フォント変更と Auto format は Mac 実機で未検証です。[Microsoft の Mac 向け VBA 資料](https://learn.microsoft.com/en-us/office/vba/api/overview/office-mac)
+Mac では同梱の `.ppam` を手動で登録します。Mac 版 PowerPoint 16.115.1 で、アドインの読み込み、数式フォントの STIX Two Math への変更、Cambria Math への復元を確認しました。
 
 1. [`PptMathFontAddin.ppam`](./PptMathFontAddin.ppam) を、登録後も使い続けるフォルダーに保存します。
 2. デスクトップ版 PowerPoint のメニューバーで **ツール > PowerPoint アドイン**（**Tools > PowerPoint Add-ins**）を開き、**＋** で `.ppam` を追加します。
-3. **Math Font** タブが表示されたら、テスト用スライドに PowerPoint 標準の数式を挿入します。**Font** で導入済みのフォントを選び、**Current slide** で表示が変わることを確認します。次に **Auto format** をオンにして選択を変えたときと、**Restore Cambria** で復元した後の挙動を確認します。
+3. リボンに **Math Font** タブが表示されれば登録完了です。
+
+動作を確認するには、テスト用スライドに PowerPoint 標準の数式を挿入し、**Font** で導入済みのフォントを選んで **Current slide** を押します。**Auto format** を試す場合は、オンにして新しい数式を追加し、選択を変えたときに指定フォントが適用されることを確認します。**Restore Cambria** を押すと数式を Cambria Math に戻せます。
 
 ## Usage
 
@@ -104,6 +106,11 @@ PowerPoint の数式エンジンは Cambria Math 以外の OpenType Math フォ�
 
 最終版では、保存後に PowerPoint を一度閉じて再オープンし、数式表示を確認してから PDF 化する運用を推奨します。
 
+> [!NOTE]
+> Mac 版 PowerPoint の **電子配布とアクセシビリティに最適** は、Microsoft のオンラインサービスで PDF に変換します。変換サービスで指定の数式フォントを使えない場合、Cambria Math に置き換わることがあります。[Microsoft のオンライン変換の説明](https://support.microsoft.com/ja-jp/accessibility/office-accessibility/create-accessible-pdfs) · [フォント置換の説明](https://support.microsoft.com/en-gb/office/collab-files/save-or-convert-to-pdf-or-xps-in-office-desktop-apps)
+>
+> **印刷に最適** は Mac 上で変換し、インストール済みのフォントを使えます。数式の見た目を維持したいときは、この設定で書き出した PDF を確認してください。Windows デスクトップ版の **ファイル > エクスポート > PDF/XPS の作成** も PC 上で変換します。[Windows 版の PDF 書き出し手順](https://support.microsoft.com/ja-jp/powerpoint/training/save-powerpoint-presentations-as-pdf-files)
+
 ## Uninstall
 
 Windows のスクリプトでインストールした場合は、PowerPoint を終了して以下を実行します。
@@ -121,3 +128,9 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
 ```
+
+## License
+
+アドインと関連コードは MIT ライセンスで配布します。[ライセンス全文](./LICENSE)
+
+数式フォントには各配布元のライセンスが適用されます。
