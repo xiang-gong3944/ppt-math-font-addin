@@ -17,7 +17,7 @@
             <item id="fontTeXGyreTermes" label="TeX Gyre Termes Math"/>
             <item id="fontTeXGyrePagella" label="TeX Gyre Pagella Math"/>
           </comboBox>
-          <toggleButton id="tglMathFontAuto" label="Auto format" imageMso="FormatPainter" screentip="When selection changes, reformat math zones on the current slide." onAction="MathFont_RibbonToggleAuto" getPressed="MathFont_RibbonGetAuto"/>
+          <toggleButton id="tglMathFontAuto" label="Auto format" imageMso="FormatPainter" screentip="Apply the math font when you leave text editing, move to a slide, or select a shape." onAction="MathFont_RibbonToggleAuto" getPressed="MathFont_RibbonGetAuto"/>
           <button id="btnMathFontCambria" label="Restore Cambria" imageMso="Undo" screentip="Restore all equation fonts to Cambria Math and turn Auto format off." onAction="MathFont_RibbonRestoreCambria"/>
         </group>
       </tab>

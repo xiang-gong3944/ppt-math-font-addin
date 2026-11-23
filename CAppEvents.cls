@@ -16,3 +16,11 @@ Private Sub App_WindowSelectionChange(ByVal Sel As PowerPoint.Selection)
     On Error Resume Next
     MathFont_HandleSelectionChange Sel
 End Sub
+
+Private Sub App_WindowDeactivate(ByVal Pres As PowerPoint.Presentation, ByVal Wn As PowerPoint.DocumentWindow)
+    MathFont_FlushAutoFormat Pres, False
+End Sub
+
+Private Sub App_PresentationBeforeSave(ByVal Pres As PowerPoint.Presentation, Cancel As Boolean)
+    If Not Cancel Then MathFont_FlushAutoFormat Pres, True
+End Sub

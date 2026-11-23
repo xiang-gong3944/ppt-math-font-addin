@@ -10,6 +10,8 @@ Private gRibbon As Office.IRibbonUI
 Private gAutoEnabled As Boolean
 Private gBusy As Boolean
 Private gTargetFont As String
+Private gAutoEditingSlide As PowerPoint.Slide
+Private gLastAutoSlide As PowerPoint.Slide
 
 Public Sub Auto_Open()
     On Error Resume Next
@@ -24,6 +26,8 @@ Public Sub Auto_Close()
     Set gAppEvents.App = Nothing
     Set gAppEvents = Nothing
     Set gRibbon = Nothing
+    Set gAutoEditingSlide = Nothing
+    Set gLastAutoSlide = Nothing
 End Sub
 
 Public Sub MathFont_RibbonOnLoad(ByVal ribbon As Office.IRibbonUI)
@@ -134,6 +138,7 @@ Public Sub MathFont_SetTargetFont(ByVal fontName As String)
     fontName = Trim$(fontName)
     If Len(fontName) > 0 Then
         SaveSetting APP_NAME, SETTINGS_SECTION, "TargetFont", fontName
+        If StrComp(gTargetFont, fontName, vbTextCompare) <> 0 Then Set gLastAutoSlide = Nothing
         gTargetFont = fontName
     End If
     ' Blank input restores the displayed value without clearing the setting.
@@ -142,15 +147,57 @@ End Sub
 
 Public Sub MathFont_HandleSelectionChange(ByVal Sel As PowerPoint.Selection)
     Dim sld As PowerPoint.Slide
+    Dim selectionType As PowerPoint.PpSelectionType
     If Not gAutoEnabled Then Exit Sub
     If gBusy Then Exit Sub
     On Error GoTo SafeExit
     gBusy = True
-    EnsureSettingsLoaded
     Set sld = CurrentSlide()
-    If Not sld Is Nothing Then Call ApplyFontToSlide(sld, gTargetFont)
+    selectionType = Sel.Type
+
+    If Not gAutoEditingSlide Is Nothing Then
+        If sld Is gAutoEditingSlide Then
+            If selectionType <> ppSelectionText Then ApplyPendingAutoFormat False
+            GoTo SafeExit
+        End If
+        ApplyPendingAutoFormat False
+    End If
+
+    If sld Is Nothing Then
+        Set gLastAutoSlide = Nothing
+    ElseIf selectionType = ppSelectionText Then
+        Set gAutoEditingSlide = sld
+    ElseIf Not sld Is gLastAutoSlide Then
+        EnsureSettingsLoaded
+        Call ApplyFontToSlide(sld, gTargetFont)
+        Set gLastAutoSlide = sld
+    ElseIf selectionType = ppSelectionShapes Then
+        EnsureSettingsLoaded
+        Call ApplyFontToShapeRange(Sel.ShapeRange, gTargetFont)
+    End If
 SafeExit:
     gBusy = False
+End Sub
+
+Public Sub MathFont_FlushAutoFormat(ByVal pres As PowerPoint.Presentation, ByVal keepEditing As Boolean)
+    If Not gAutoEnabled Then Exit Sub
+    If gBusy Then Exit Sub
+    If gAutoEditingSlide Is Nothing Then Exit Sub
+    On Error GoTo SafeExit
+    If Not gAutoEditingSlide.Parent Is pres Then Exit Sub
+    gBusy = True
+    ApplyPendingAutoFormat keepEditing
+SafeExit:
+    gBusy = False
+End Sub
+
+Private Sub ApplyPendingAutoFormat(ByVal keepEditing As Boolean)
+    Dim sld As PowerPoint.Slide
+    Set sld = gAutoEditingSlide
+    If Not keepEditing Then Set gAutoEditingSlide = Nothing
+    EnsureSettingsLoaded
+    Call ApplyFontToSlide(sld, gTargetFont)
+    Set gLastAutoSlide = sld
 End Sub
 
 Private Sub EnsureSettingsLoaded()
@@ -160,6 +207,10 @@ Private Sub EnsureSettingsLoaded()
 End Sub
 
 Private Sub SetAutoEnabled(ByVal enabled As Boolean)
+    If gAutoEnabled <> enabled Then
+        Set gAutoEditingSlide = Nothing
+        Set gLastAutoSlide = Nothing
+    End If
     gAutoEnabled = enabled
     SaveSetting APP_NAME, SETTINGS_SECTION, "AutoEnabled", IIf(gAutoEnabled, "1", "0")
     If Not gRibbon Is Nothing Then gRibbon.InvalidateControl "tglMathFontAuto"
@@ -167,7 +218,7 @@ End Sub
 
 Private Sub ShowAutoFormatNotice()
     MsgBox "Auto format and the target font are saved across PowerPoint sessions." & vbCrLf & vbCrLf & _
-        "While Auto format is on, changing the selection in any open presentation can reformat the equations on its current slide. " & _
+        "While Auto format is on, visiting a slide, leaving text editing, or selecting a shape can reformat equations in any open presentation. " & _
         "Turn Auto format off before working on a presentation whose equation fonts you want to keep.", _
         vbExclamation, "Math Font - Auto format"
 End Sub
@@ -248,6 +299,7 @@ Private Function FormatTextRangeMathZones(ByVal tr As Office.TextRange2, ByVal f
     Dim havePrev As Boolean
     Dim guard As Long
     Dim hadError As Boolean
+    Dim currentFont As String
 
     If tr Is Nothing Then Exit Function
     If tr.Length <= 0 Then Exit Function
@@ -279,9 +331,14 @@ Private Function FormatTextRangeMathZones(ByVal tr As Office.TextRange2, ByVal f
         havePrev = True
 
         On Error Resume Next
-        ' Keep the upright/italic style set by PowerPoint's normal font controls.
-        zone.Font.Name = fontName
-        If Err.Number = 0 Then FormatTextRangeMathZones = FormatTextRangeMathZones + 1
+        currentFont = vbNullString
+        currentFont = zone.Font.Name
+        If StrComp(currentFont, fontName, vbTextCompare) <> 0 Then
+            Err.Clear
+            ' Keep the upright/italic style set by PowerPoint's normal font controls.
+            zone.Font.Name = fontName
+            If Err.Number = 0 Then FormatTextRangeMathZones = FormatTextRangeMathZones + 1
+        End If
         Err.Clear
         On Error GoTo 0
 
